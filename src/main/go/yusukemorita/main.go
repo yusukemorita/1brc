@@ -14,6 +14,13 @@ import (
 
 const limit = 10_000_000_000
 
+type City struct {
+	min   int
+	max   int
+	sum   int
+	count int
+}
+
 func main() {
 	startTime := time.Now()
 
@@ -29,7 +36,7 @@ func main() {
 
 	counter := 0
 
-	result := make(map[string][]int)
+	result := make(map[string]City)
 
 	cityNames := NewSet()
 
@@ -52,10 +59,27 @@ func main() {
 		cityName := values[0]
 		temperature := parseTemperature(values[1])
 
-		result[cityName] = append(result[cityName], temperature)
 		cityNames.Add(cityName)
 
-		// fmt.Printf("appending %s, %d\n", city, temperature)
+		city, ok := result[cityName]
+		if ok {
+			if city.min > temperature {
+				city.min = temperature
+			}
+			if city.max < temperature {
+				city.max = temperature
+			}
+			city.sum += temperature
+			city.count++
+			result[cityName] = city
+		} else {
+			result[cityName] = City{
+				min:   temperature,
+				max:   temperature,
+				sum:   temperature,
+				count: 1,
+			}
+		}
 
 		if counter >= limit {
 			break
@@ -73,10 +97,9 @@ func main() {
 
 	calculateStart := time.Now()
 	for _, cityName := range allCityNames {
-		temperatures := result[cityName]
-		mean := math.Ceil(float64(sum(temperatures)) / float64(len(temperatures)))
-		max, min := maxAndMin(temperatures)
-		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(min)/10, float64(mean)/10, float64(max)/10)
+		city := result[cityName]
+		mean := math.Ceil(float64(city.sum) / float64(city.count * 10))
+		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, mean, float64(city.max)/10)
 	}
 	calculateEnd := time.Now()
 
@@ -98,30 +121,6 @@ func parseTemperature(s string) int {
 	}
 
 	return int(integer)
-}
-
-func sum(numbers []int) int {
-	s := 0
-
-	for _, number := range numbers {
-		s += number
-	}
-
-	return s
-}
-
-func maxAndMin(numbers []int) (max, min int) {
-	currentMax := numbers[0]
-	currentMin := numbers[0]
-	for _, n := range numbers {
-		if n > currentMax {
-			currentMax = n
-		}
-		if n < currentMin {
-			currentMin = n
-		}
-	}
-	return currentMax, currentMin
 }
 
 func NewSet() Set {
