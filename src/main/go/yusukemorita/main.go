@@ -12,8 +12,6 @@ import (
 	"time"
 )
 
-const limit = 10_000_000_000
-
 type City struct {
 	min   int
 	max   int
@@ -25,16 +23,9 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	file, err := os.Open("../../../../data/measurements.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close() // Make sure to close the file when you're done
+	textChannel := make(chan string)
 
-	// Create a new Scanner for the file
-	scanner := bufio.NewScanner(file)
-
-	counter := 0
+	go readFile(textChannel)
 
 	result := make(map[string]*City)
 
@@ -42,10 +33,7 @@ func main() {
 
 	// Loop over all lines in the file
 	loopStart := time.Now()
-	for scanner.Scan() {
-		counter++
-		line := scanner.Text()
-
+	for line := range textChannel {
 		if strings.HasPrefix(line, "#") {
 			// ignore comments
 			continue
@@ -79,14 +67,8 @@ func main() {
 				count: 1,
 			}
 		}
+	}
 
-		if counter >= limit {
-			break
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
 	loopEnd := time.Now()
 
 	citySortStart := time.Now()
@@ -108,6 +90,30 @@ func main() {
 	fmt.Printf("loop duration: %f seconds\n", loopEnd.Sub(loopStart).Seconds())
 	fmt.Printf("city sort duration: %f seconds\n", citySortEnd.Sub(citySortStart).Seconds())
 	fmt.Printf("calculate duration: %f seconds\n", calculateEnd.Sub(calculateStart).Seconds())
+}
+
+func readFile(textChannel chan string) {
+	file, err := os.Open("../../../../data/measurements.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	// limit := 10_000_000
+	// counter := 0
+	for scanner.Scan() {
+		textChannel <- scanner.Text()
+		// counter++
+		// if counter >= limit {
+		// 	break
+		// }
+	}
+	close(textChannel)
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // "41.1" -> 411
