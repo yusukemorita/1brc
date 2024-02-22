@@ -36,7 +36,7 @@ func main() {
 
 	counter := 0
 
-	result := make(map[string]City)
+	result := make(map[string]*City)
 
 	cityNames := NewSet()
 
@@ -71,9 +71,8 @@ func main() {
 			}
 			city.sum += temperature
 			city.count++
-			result[cityName] = city
 		} else {
-			result[cityName] = City{
+			result[cityName] = &City{
 				min:   temperature,
 				max:   temperature,
 				sum:   temperature,
@@ -98,8 +97,8 @@ func main() {
 	calculateStart := time.Now()
 	for _, cityName := range allCityNames {
 		city := result[cityName]
-		mean := math.Ceil(float64(city.sum) / float64(city.count * 10))
-		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, mean, float64(city.max)/10)
+		mean := math.Ceil(float64(city.sum) / float64(city.count))
+		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, float64(mean/10), float64(city.max)/10)
 	}
 	calculateEnd := time.Now()
 
