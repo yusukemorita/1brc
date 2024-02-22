@@ -82,7 +82,7 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	concurrency := 1
+	concurrency := 4
 	textChannel := make(chan string, 100)
 	resultChannel := make(chan Result, concurrency)
 	go readFile(textChannel)
