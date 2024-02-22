@@ -23,7 +23,7 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	textChannel := make(chan string, 10)
+	textChannel := make(chan string, 100)
 
 	go readFile(textChannel)
 

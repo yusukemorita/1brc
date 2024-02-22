@@ -8865,7 +8865,7 @@ Zərdab=-99.9/-0.1/99.9
 ’Aïn Arnat=-99.9/-0.0/99.9
 ’Aïn Azel=-99.9/0.1/99.9
 ’s-Gravenzande=-99.9/0.3/99.9
-total duration: 322.158506 seconds
-loop duration: 322.139330 seconds
-city sort duration: 0.001525 seconds
-calculate duration: 0.017598 seconds
+total duration: 286.416035 seconds
+loop duration: 286.396965 seconds
+city sort duration: 0.001145 seconds
+calculate duration: 0.017880 seconds
