@@ -82,6 +82,8 @@ type Result struct {
 
 const cpuProfile = "cpu.prof"
 const memoryProfile = "memory.prof"
+const concurrency = 4
+const batchSize = 100
 
 func main() {
 	f, err := os.Create(cpuProfile)
@@ -97,10 +99,9 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	concurrency := 4
-	textChannel := make(chan string, 100)
+	linesChannel := make(chan []string, 100)
 	resultChannel := make(chan Result, concurrency)
-	go readFile(textChannel)
+	go readFile(linesChannel)
 
 	waitGroup := new(sync.WaitGroup)
 	waitGroup.Add(concurrency)
@@ -117,7 +118,7 @@ func main() {
 	for i := 1; i <= concurrency; i++ {
 		go func() {
 			defer waitGroup.Done()
-			names, cities := processLine(textChannel)
+			names, cities := processLine(linesChannel)
 			resultChannel <- Result{cityNames: names, cities: cities}
 		}()
 	}
@@ -164,7 +165,7 @@ func main() {
 	}
 }
 
-func readFile(textChannel chan string) {
+func readFile(linesChannel chan []string) {
 	file, err := os.Open("../../../../data/measurements.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -174,40 +175,51 @@ func readFile(textChannel chan string) {
 	scanner := bufio.NewScanner(file)
 	// limit := 10_000_000
 	// counter := 0
+
+	// batch together `batchSize` lines of text to send to the channel
+	var batch []string
+
 	for scanner.Scan() {
-		textChannel <- scanner.Text()
+		batch = append(batch, scanner.Text())
+		if len(batch) >= batchSize {
+			linesChannel <- batch
+			batch = []string{}
+		}
+
 		// counter++
 		// if counter >= limit {
 		// 	break
 		// }
 	}
-	close(textChannel)
+	close(linesChannel)
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func processLine(textChannel chan string) (cityNames Set, cityCollection CityCollection) {
+func processLine(textChannel chan []string) (cityNames Set, cityCollection CityCollection) {
 	cityCollection = NewCityCollection()
 	cityNames = NewSet()
 
-	for line := range textChannel {
-		if strings.HasPrefix(line, "#") {
-			// ignore comments
-			continue
+	for lines := range textChannel {
+		for _, line := range lines {
+			if strings.HasPrefix(line, "#") {
+				// ignore comments
+				continue
+			}
+
+			values := strings.Split(line, ";")
+			if len(values) != 2 {
+				log.Fatalf("unexpected values: %s", line)
+			}
+
+			cityName := values[0]
+			temperature := parseTemperature(values[1])
+
+			cityNames.Add(cityName)
+			cityCollection.Add(cityName, temperature)
 		}
-
-		values := strings.Split(line, ";")
-		if len(values) != 2 {
-			log.Fatalf("unexpected values: %s", line)
-		}
-
-		cityName := values[0]
-		temperature := parseTemperature(values[1])
-
-		cityNames.Add(cityName)
-		cityCollection.Add(cityName, temperature)
 	}
 
 	return cityNames, cityCollection
