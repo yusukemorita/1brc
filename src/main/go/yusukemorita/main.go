@@ -204,11 +204,6 @@ func processLine(textChannel chan []string) (cityNames Set, cityCollection CityC
 
 	for lines := range textChannel {
 		for _, line := range lines {
-			if strings.HasPrefix(line, "#") {
-				// ignore comments
-				continue
-			}
-
 			values := strings.Split(line, ";")
 			if len(values) != 2 {
 				log.Fatalf("unexpected values: %s", line)
