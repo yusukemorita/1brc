@@ -6,6 +6,8 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"slices"
 	"strconv"
 	"strings"
@@ -78,7 +80,20 @@ type Result struct {
 	cities    CityCollection
 }
 
+const cpuProfile = "cpu.prof"
+const memoryProfile = "memory.prof"
+
 func main() {
+	f, err := os.Create(cpuProfile)
+	if err != nil {
+		log.Fatal("could not create CPU profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	if err := pprof.StartCPUProfile(f); err != nil {
+		log.Fatal("could not start CPU profile: ", err)
+	}
+	defer pprof.StopCPUProfile()
+
 	startTime := time.Now()
 
 	// Open the file
@@ -90,10 +105,13 @@ func main() {
 	waitGroup := new(sync.WaitGroup)
 	waitGroup.Add(concurrency)
 
+	var processStart, processEnd time.Time
 	// close result channel after receiving all results
 	go func() {
+		processStart = time.Now()
 		defer close(resultChannel)
 		waitGroup.Wait()
+		processEnd = time.Now()
 	}()
 
 	for i := 1; i <= concurrency; i++ {
@@ -104,12 +122,15 @@ func main() {
 		}()
 	}
 
+	var mergeDuration time.Duration
 	allCityNames := NewSet()
 	allCities := NewCityCollection()
-
 	for result := range resultChannel {
+		start := time.Now()
 		allCityNames.Merge(result.cityNames)
 		allCities = allCities.Merge(result.cities)
+		end := time.Now()
+		mergeDuration += end.Sub(start)
 	}
 
 	citySortStart := time.Now()
@@ -126,11 +147,21 @@ func main() {
 	calculateEnd := time.Now()
 
 	endTime := time.Now()
-	duration := endTime.Sub(startTime)
-	fmt.Printf("total duration: %f seconds\n", duration.Seconds())
-	// fmt.Printf("loop duration: %f seconds\n", loopEnd.Sub(loopStart).Seconds())
+	fmt.Printf("total duration: %f seconds\n", endTime.Sub(startTime).Seconds())
+	fmt.Printf("process duration: %f seconds\n", processEnd.Sub(processStart).Seconds())
+	fmt.Printf("merge duration: %f seconds\n", mergeDuration.Seconds())
 	fmt.Printf("city sort duration: %f seconds\n", citySortEnd.Sub(citySortStart).Seconds())
 	fmt.Printf("calculate duration: %f seconds\n", calculateEnd.Sub(calculateStart).Seconds())
+
+	f, err = os.Create(memoryProfile)
+	if err != nil {
+		log.Fatal("could not create memory profile: ", err)
+	}
+	defer f.Close() // error handling omitted for example
+	runtime.GC()    // get up-to-date statistics
+	if err := pprof.WriteHeapProfile(f); err != nil {
+		log.Fatal("could not write memory profile: ", err)
+	}
 }
 
 func readFile(textChannel chan string) {
