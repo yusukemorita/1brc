@@ -231,25 +231,19 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 
 	for linesString := range textChannel {
 		for {
-			newLineIndex := strings.Index(linesString, "\n")
-			if newLineIndex == -1 {
+			line, remaining, found := strings.Cut(linesString, "\n")
+			if !found {
 				// end of string reached
 				break
 			}
+			linesString = remaining
 
-			line := linesString[:newLineIndex]
-			linesString = linesString[newLineIndex+1:]
-
-			separatorIndex := strings.Index(line, ";")
-			if separatorIndex == -1 {
+			cityName, temperaturesString, found := strings.Cut(line, ";")
+			if !found {
 				log.Fatalf("unexpected values: %s", line)
 			}
-
-			cityName := line[:separatorIndex]
-			temperature := parseTemperature(line[separatorIndex+1:])
-
 			cityNames.Add(cityName)
-			cityCollection.Add(cityName, int(temperature))
+			cityCollection.Add(cityName, parseTemperature(temperaturesString))
 		}
 	}
 
@@ -258,7 +252,7 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 
 // "41.1" -> 411
 // assume 3 digits if positive, and 4 digits if negative
-func parseTemperature(s string) int64 {
+func parseTemperature(s string) int {
 	integerString, decimalString, found := strings.Cut(s, ".")
 	if !found {
 		log.Fatalf("dot not found: %s", s)
@@ -277,9 +271,9 @@ func parseTemperature(s string) int64 {
 	}
 
 	if integer >= 0 {
-		return integer * 10 + decimal
+		return int(integer * 10 + decimal)
 	} else {
-		return integer * 10 - decimal
+		return int(integer * 10 - decimal)
 	}
 }
 
