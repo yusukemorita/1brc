@@ -249,7 +249,7 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 			temperature := parseTemperature(line[separatorIndex+1:])
 
 			cityNames.Add(cityName)
-			cityCollection.Add(cityName, temperature)
+			cityCollection.Add(cityName, int(temperature))
 		}
 	}
 
@@ -257,16 +257,30 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 }
 
 // "41.1" -> 411
-func parseTemperature(s string) int {
-	withoutDot := strings.Replace(s, ".", "", 1)
-
-	integer, err := strconv.ParseInt(withoutDot, 10, 0)
-	if err != nil {
-		log.Println(err)
-		log.Fatalf("error parsing original: (%s), without dot: (%s)\n", s, withoutDot)
+// assume 3 digits if positive, and 4 digits if negative
+func parseTemperature(s string) int64 {
+	integerString, decimalString, found := strings.Cut(s, ".")
+	if !found {
+		log.Fatalf("dot not found: %s", s)
 	}
 
-	return int(integer)
+	integer, err := strconv.ParseInt(integerString, 10, 0)
+	if err != nil {
+		log.Println(err)
+		log.Fatalf("error parsing: %s", s)
+	}
+
+	decimal, err := strconv.ParseInt(decimalString, 10, 0)
+	if err != nil {
+		log.Println(err)
+		log.Fatalf("error parsing: %s", s)
+	}
+
+	if integer >= 0 {
+		return integer * 10 + decimal
+	} else {
+		return integer * 10 - decimal
+	}
 }
 
 func NewSet() Set {
