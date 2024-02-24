@@ -230,21 +230,23 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 	cityNames = NewSet()
 
 	for linesString := range textChannel {
-		lines := strings.Split(linesString, "\n")
-		for _, line := range lines {
-			if line == "" {
-				// ignore blank lines
-				continue
+		for {
+			newLineIndex := strings.Index(linesString, "\n")
+			if newLineIndex == -1 {
+				// end of string reached
+				break
 			}
 
-			values := strings.Split(line, ";")
-			if len(values) != 2 {
-				log.Println(linesString)
-				log.Fatalf("unexpected values: (%s). first line: (%s), last line: (%s)", line, lines[0], lines[len(lines)-1])
+			line := linesString[:newLineIndex]
+			linesString = linesString[newLineIndex+1:]
+
+			separatorIndex := strings.Index(line, ";")
+			if separatorIndex == -1 {
+				log.Fatalf("unexpected values: %s", line)
 			}
 
-			cityName := values[0]
-			temperature := parseTemperature(values[1])
+			cityName := line[:separatorIndex]
+			temperature := parseTemperature(line[separatorIndex+1:])
 
 			cityNames.Add(cityName)
 			cityCollection.Add(cityName, temperature)
