@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -85,6 +86,9 @@ const memoryProfile = "memory.prof"
 const concurrency = 4
 const batchSize = 100
 
+const chunkSize = 1 * 1024 * 1024 // 1mb
+// const chunkSize = 500 * 1024 // 500kb
+
 func main() {
 	f, err := os.Create(cpuProfile)
 	if err != nil {
@@ -99,7 +103,7 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	linesChannel := make(chan []string, 100)
+	linesChannel := make(chan string, 100)
 	resultChannel := make(chan Result, concurrency)
 	go readFile(linesChannel)
 
@@ -165,48 +169,78 @@ func main() {
 	}
 }
 
-func readFile(linesChannel chan []string) {
+func readFile(linesChannel chan string) {
 	file, err := os.Open("../../../../data/measurements.txt")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	// limit := 10_000_000
-	// counter := 0
+	// limit := 500 * 1024 * 1024
+	buffer := make([]byte, chunkSize)
+	finished := false
+	var readCount int64 = 0
 
-	// batch together `batchSize` lines of text to send to the channel
-	var batch []string
-
-	for scanner.Scan() {
-		batch = append(batch, scanner.Text())
-		if len(batch) >= batchSize {
-			linesChannel <- batch
-			batch = []string{}
+	for {
+		if finished {
+			break
 		}
 
-		// counter++
-		// if counter >= limit {
+		count, err := file.ReadAt(buffer, readCount)
+		if err == io.EOF {
+			finished = true
+		} else if err != nil {
+			log.Fatal(err)
+		}
+		readCount += int64(count)
+
+		// read up to the next new line
+		var extra []byte
+		for {
+			singleCharacterBuffer := make([]byte, 1)
+			_, err = file.ReadAt(singleCharacterBuffer, readCount)
+			if err == io.EOF {
+				finished = true
+				break
+			} else if err != nil {
+				log.Fatal(err)
+			}
+			readCount++
+			extra = append(extra, singleCharacterBuffer...)
+			if singleCharacterBuffer[0] == '\n' {
+				break
+			}
+		}
+
+		// remove null bytes from string, which can happen when
+		// the end of the file has been reached and the buffer is not full.
+		buffer = bytes.Trim(buffer, "\x00")
+		linesChannel <- string(buffer) + string(extra)
+		buffer = make([]byte, chunkSize)
+
+		// if int(readCount) >= limit {
 		// 	break
 		// }
 	}
 	close(linesChannel)
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
 }
 
-func processLine(textChannel chan []string) (cityNames Set, cityCollection CityCollection) {
+func processLine(textChannel chan string) (cityNames Set, cityCollection CityCollection) {
 	cityCollection = NewCityCollection()
 	cityNames = NewSet()
 
-	for lines := range textChannel {
+	for linesString := range textChannel {
+		lines := strings.Split(linesString, "\n")
 		for _, line := range lines {
+			if line == "" {
+				// ignore blank lines
+				continue
+			}
+
 			values := strings.Split(line, ";")
 			if len(values) != 2 {
-				log.Fatalf("unexpected values: %s", line)
+				log.Println(linesString)
+				log.Fatalf("unexpected values: (%s). first line: (%s), last line: (%s)", line, lines[0], lines[len(lines)-1])
 			}
 
 			cityName := values[0]
@@ -226,7 +260,8 @@ func parseTemperature(s string) int {
 
 	integer, err := strconv.ParseInt(withoutDot, 10, 0)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		log.Fatalf("error parsing original: (%s), without dot: (%s)\n", s, withoutDot)
 	}
 
 	return int(integer)
