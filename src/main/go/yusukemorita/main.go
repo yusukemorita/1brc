@@ -102,60 +102,40 @@ func main() {
 	startTime := time.Now()
 
 	// Open the file
-	linesChannel := make(chan string, 100)
+	chunkChannel := make(chan string, 100)
 	resultChannel := make(chan Result, concurrency)
-	go readFile(linesChannel)
+	go readFile(chunkChannel)
 
 	waitGroup := new(sync.WaitGroup)
-	waitGroup.Add(concurrency)
 
-	var processStart, processEnd time.Time
-	// close result channel after receiving all results
-	go func() {
-		processStart = time.Now()
-		defer close(resultChannel)
-		waitGroup.Wait()
-		processEnd = time.Now()
-	}()
-
-	for i := 1; i <= concurrency; i++ {
-		go func() {
-			defer waitGroup.Done()
-			names, cities := processLine(linesChannel)
-			resultChannel <- Result{cityNames: names, cities: cities}
-		}()
+	for chunk := range chunkChannel {
+		waitGroup.Add(1)
+		go processChunk(chunk, resultChannel, waitGroup)
 	}
 
-	var mergeDuration time.Duration
+	go func() {
+		waitGroup.Wait()
+		// close result channel after receiving all results
+		close(resultChannel)
+	}()
+
 	allCityNames := NewSet()
 	allCities := NewCityCollection()
 	for result := range resultChannel {
-		start := time.Now()
 		allCityNames.Merge(result.cityNames)
 		allCities = allCities.Merge(result.cities)
-		end := time.Now()
-		mergeDuration += end.Sub(start)
 	}
 
-	citySortStart := time.Now()
 	sortedCityNames := allCityNames.ToSlice()
 	slices.Sort(sortedCityNames)
-	citySortEnd := time.Now()
 
-	calculateStart := time.Now()
 	for _, cityName := range sortedCityNames {
 		city := allCities.cities[cityName]
 		mean := math.Ceil(float64(city.sum) / float64(city.count))
 		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, float64(mean/10), float64(city.max)/10)
 	}
-	calculateEnd := time.Now()
 
-	endTime := time.Now()
-	fmt.Printf("total duration: %f seconds\n", endTime.Sub(startTime).Seconds())
-	fmt.Printf("process duration: %f seconds\n", processEnd.Sub(processStart).Seconds())
-	fmt.Printf("merge duration: %f seconds\n", mergeDuration.Seconds())
-	fmt.Printf("city sort duration: %f seconds\n", citySortEnd.Sub(citySortStart).Seconds())
-	fmt.Printf("calculate duration: %f seconds\n", calculateEnd.Sub(calculateStart).Seconds())
+	fmt.Printf("total duration: %f seconds\n", time.Now().Sub(startTime).Seconds())
 
 	f, err = os.Create(memoryProfile)
 	if err != nil {
@@ -168,7 +148,7 @@ func main() {
 	}
 }
 
-func readFile(linesChannel chan string) {
+func readFile(chunkChannel chan string) {
 	file, err := os.Open("../../../../data/measurements.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -214,39 +194,39 @@ func readFile(linesChannel chan string) {
 		// remove null bytes from string, which can happen when
 		// the end of the file has been reached and the buffer is not full.
 		buffer = bytes.Trim(buffer, "\x00")
-		linesChannel <- string(buffer) + string(extra)
+		chunkChannel <- string(buffer) + string(extra)
 		buffer = make([]byte, chunkSize)
 
 		// if int(readCount) >= limit {
 		// 	break
 		// }
 	}
-	close(linesChannel)
+	close(chunkChannel)
 }
 
-func processLine(textChannel chan string) (cityNames Set, cityCollection CityCollection) {
-	cityCollection = NewCityCollection()
-	cityNames = NewSet()
+func processChunk(chunk string, resultChannel chan Result, waitGroup *sync.WaitGroup) {
+	log.Printf("processing chunk: %s\n", chunk)
+	cityCollection := NewCityCollection()
+	cityNames := NewSet()
 
-	for linesString := range textChannel {
-		for {
-			line, remaining, found := strings.Cut(linesString, "\n")
-			if !found {
-				// end of string reached
-				break
-			}
-			linesString = remaining
-
-			cityName, temperaturesString, found := strings.Cut(line, ";")
-			if !found {
-				log.Fatalf("unexpected values: %s", line)
-			}
-			cityNames.Add(cityName)
-			cityCollection.Add(cityName, parseTemperature(temperaturesString))
+	for {
+		line, remaining, found := strings.Cut(chunk, "\n")
+		if !found {
+			// end of string reached
+			break
 		}
+		chunk = remaining
+
+		cityName, temperaturesString, found := strings.Cut(line, ";")
+		if !found {
+			log.Fatalf("unexpected values: %s", line)
+		}
+		cityNames.Add(cityName)
+		cityCollection.Add(cityName, parseTemperature(temperaturesString))
 	}
 
-	return cityNames, cityCollection
+	resultChannel <- Result{cityNames: cityNames, cities: cityCollection}
+	waitGroup.Done()
 }
 
 // "41.1" -> 411
