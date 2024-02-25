@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -258,23 +257,39 @@ func parseTemperature(s string) int {
 		log.Fatalf("dot not found: %s", s)
 	}
 
-	integer, err := strconv.ParseInt(integerString, 10, 0)
-	if err != nil {
-		log.Println(err)
-		log.Fatalf("error parsing: %s", s)
+	positive := integerString[0] != '-'
+	if !positive {
+		integerString = integerString[1:]
 	}
 
-	decimal, err := strconv.ParseInt(decimalString, 10, 0)
-	if err != nil {
-		log.Println(err)
-		log.Fatalf("error parsing: %s", s)
-	}
-
-	if integer >= 0 {
-		return int(integer * 10 + decimal)
+	var integer int
+	if len(integerString) == 2 {
+		integer = convertTwoDigits(integerString)
 	} else {
-		return int(integer * 10 - decimal)
+		integer = convertOneDigit(integerString[0])
 	}
+
+	decimal := convertOneDigit(decimalString[0])
+
+	absolute := integer*10 + decimal
+
+	if positive {
+		return absolute
+	} else {
+		return -1 * absolute
+	}
+}
+
+func convertTwoDigits(s string) int {
+	highDigit := convertOneDigit(s[0])
+	lowDigit := convertOneDigit(s[1])
+
+	return highDigit*10 + lowDigit
+}
+
+func convertOneDigit(b byte) int {
+	b -= '0'
+	return int(b)
 }
 
 func NewSet() Set {
