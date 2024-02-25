@@ -14,71 +14,6 @@ import (
 	"sync"
 	"time"
 )
-
-type City struct {
-	min   int
-	max   int
-	sum   int
-	count int
-}
-
-type CityCollection struct {
-	cities map[string]*City
-}
-
-func (collection CityCollection) Merge(cc CityCollection) CityCollection {
-	new := cc.cities
-
-	for cityName, cityB := range collection.cities {
-		cityA, ok := new[cityName]
-		if ok {
-			if cityA.max < cityB.max {
-				cityA.max = cityB.max
-			}
-			if cityA.min > cityB.min {
-				cityA.min = cityB.min
-			}
-			cityA.count += cityB.count
-			cityA.sum += cityB.sum
-		} else {
-			new[cityName] = cityB
-		}
-	}
-
-	return CityCollection{cities: new}
-}
-
-func (collection CityCollection) Add(name string, temperature int) {
-	city, ok := collection.cities[name]
-	if ok {
-		if city.min > temperature {
-			city.min = temperature
-		}
-		if city.max < temperature {
-			city.max = temperature
-		}
-		city.sum += temperature
-		city.count++
-	} else {
-		collection.cities[name] = &City{
-			min:   temperature,
-			max:   temperature,
-			sum:   temperature,
-			count: 1,
-		}
-	}
-}
-
-func NewCityCollection() CityCollection {
-	return CityCollection{
-		cities: make(map[string]*City),
-	}
-}
-
-type Result struct {
-	cities CityCollection
-}
-
 const cpuProfile = "cpu13.prof"
 const memoryProfile = "memory13.prof"
 const concurrency = 4
@@ -100,44 +35,7 @@ func main() {
 
 	startTime := time.Now()
 
-	// Open the file
-	linesChannel := make(chan string, 100)
-	resultChannel := make(chan Result, concurrency)
-	go readFile(linesChannel)
-
-	waitGroup := new(sync.WaitGroup)
-	waitGroup.Add(concurrency)
-
-	// close result channel after receiving all results
-	go func() {
-		defer close(resultChannel)
-		waitGroup.Wait()
-	}()
-
-	for i := 1; i <= concurrency; i++ {
-		go func() {
-			defer waitGroup.Done()
-			cities := processLine(linesChannel)
-			resultChannel <- Result{cities: cities}
-		}()
-	}
-
-	allCities := NewCityCollection()
-	for result := range resultChannel {
-		allCities = allCities.Merge(result.cities)
-	}
-
-	var cityNames []string
-	for cityName, _ := range allCities.cities {
-		cityNames = append(cityNames, cityName)
-	}
-	slices.Sort(cityNames)
-
-	for _, cityName := range cityNames {
-		city := allCities.cities[cityName]
-		mean := math.Ceil(float64(city.sum) / float64(city.count))
-		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, float64(mean/10), float64(city.max)/10)
-	}
+	run()
 
 	fmt.Printf("\ntotal duration: %f seconds\n", time.Now().Sub(startTime).Seconds())
 
@@ -152,7 +50,48 @@ func main() {
 	}
 }
 
-func readFile(linesChannel chan string) {
+func run() {
+	// read file
+	chunkChannel := make(chan string, 100)
+	cityCollectionChannel := make(chan CityCollection, concurrency)
+	go readFileInChunks(chunkChannel)
+
+	waitGroup := new(sync.WaitGroup)
+	waitGroup.Add(concurrency)
+
+	// close city collection channel after receiving all city collections
+	go func() {
+		defer close(cityCollectionChannel)
+		waitGroup.Wait()
+	}()
+
+	for i := 1; i <= concurrency; i++ {
+		go func() {
+			defer waitGroup.Done()
+			cities := processChunk(chunkChannel)
+			cityCollectionChannel <- cities
+		}()
+	}
+
+	allCities := NewCityCollection()
+	for collection := range cityCollectionChannel {
+		allCities = allCities.Merge(collection)
+	}
+
+	var cityNames []string
+	for cityName, _ := range allCities.cities {
+		cityNames = append(cityNames, cityName)
+	}
+	slices.Sort(cityNames)
+
+	for _, cityName := range cityNames {
+		city := allCities.cities[cityName]
+		mean := math.Ceil(float64(city.sum) / float64(city.count))
+		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, float64(mean/10), float64(city.max)/10)
+	}
+}
+
+func readFileInChunks(chunkChannel chan string) {
 	file, err := os.Open("../../../../data/measurements.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -198,20 +137,20 @@ func readFile(linesChannel chan string) {
 		// remove null bytes from string, which can happen when
 		// the end of the file has been reached and the buffer is not full.
 		buffer = bytes.Trim(buffer, "\x00")
-		linesChannel <- string(buffer) + string(extra)
+		chunkChannel <- string(buffer) + string(extra)
 		buffer = make([]byte, chunkSize)
 
 		// if int(readCount) >= limit {
 		// 	break
 		// }
 	}
-	close(linesChannel)
+	close(chunkChannel)
 }
 
-func processLine(textChannel chan string) (cityCollection CityCollection) {
+func processChunk(chunkChannel chan string) (cityCollection CityCollection) {
 	cityCollection = NewCityCollection()
 
-	for linesString := range textChannel {
+	for linesString := range chunkChannel {
 		for {
 			line, remaining, found := strings.Cut(linesString, "\n")
 			if !found {
@@ -272,4 +211,64 @@ func convertTwoDigits(s string) int {
 func convertOneDigit(b byte) int {
 	b -= '0'
 	return int(b)
+}
+
+type City struct {
+	min   int
+	max   int
+	sum   int
+	count int
+}
+
+type CityCollection struct {
+	cities map[string]*City
+}
+
+func (collection CityCollection) Merge(cc CityCollection) CityCollection {
+	new := cc.cities
+
+	for cityName, cityB := range collection.cities {
+		cityA, ok := new[cityName]
+		if ok {
+			if cityA.max < cityB.max {
+				cityA.max = cityB.max
+			}
+			if cityA.min > cityB.min {
+				cityA.min = cityB.min
+			}
+			cityA.count += cityB.count
+			cityA.sum += cityB.sum
+		} else {
+			new[cityName] = cityB
+		}
+	}
+
+	return CityCollection{cities: new}
+}
+
+func (collection CityCollection) Add(name string, temperature int) {
+	city, ok := collection.cities[name]
+	if ok {
+		if city.min > temperature {
+			city.min = temperature
+		}
+		if city.max < temperature {
+			city.max = temperature
+		}
+		city.sum += temperature
+		city.count++
+	} else {
+		collection.cities[name] = &City{
+			min:   temperature,
+			max:   temperature,
+			sum:   temperature,
+			count: 1,
+		}
+	}
+}
+
+func NewCityCollection() CityCollection {
+	return CityCollection{
+		cities: make(map[string]*City),
+	}
 }
