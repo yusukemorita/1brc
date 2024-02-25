@@ -13,9 +13,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"flag"
 )
-const cpuProfile = "cpu13.prof"
-const memoryProfile = "memory13.prof"
+
+var attemptNumber = flag.String("attempt", "", "used for naming of .prof files")
 const concurrency = 4
 const batchSize = 100
 
@@ -23,6 +24,9 @@ const chunkSize = 1 * 1024 * 1024 // 1mb
 // const chunkSize = 500 * 1024 // 500kb
 
 func main() {
+	flag.Parse()
+
+	cpuProfile := fmt.Sprintf("cpu%s.prof", *attemptNumber)
 	f, err := os.Create(cpuProfile)
 	if err != nil {
 		log.Fatal("could not create CPU profile: ", err)
@@ -39,6 +43,7 @@ func main() {
 
 	fmt.Printf("\ntotal duration: %f seconds\n", time.Now().Sub(startTime).Seconds())
 
+	memoryProfile := fmt.Sprintf("memory%s.prof", *attemptNumber)
 	f, err = os.Create(memoryProfile)
 	if err != nil {
 		log.Fatal("could not create memory profile: ", err)
