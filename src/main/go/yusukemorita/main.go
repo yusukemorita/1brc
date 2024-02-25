@@ -76,12 +76,11 @@ func NewCityCollection() CityCollection {
 }
 
 type Result struct {
-	cityNames Set
-	cities    CityCollection
+	cities CityCollection
 }
 
-const cpuProfile = "cpu.prof"
-const memoryProfile = "memory.prof"
+const cpuProfile = "cpu13.prof"
+const memoryProfile = "memory13.prof"
 const concurrency = 4
 const batchSize = 100
 
@@ -109,53 +108,38 @@ func main() {
 	waitGroup := new(sync.WaitGroup)
 	waitGroup.Add(concurrency)
 
-	var processStart, processEnd time.Time
 	// close result channel after receiving all results
 	go func() {
-		processStart = time.Now()
 		defer close(resultChannel)
 		waitGroup.Wait()
-		processEnd = time.Now()
 	}()
 
 	for i := 1; i <= concurrency; i++ {
 		go func() {
 			defer waitGroup.Done()
-			names, cities := processLine(linesChannel)
-			resultChannel <- Result{cityNames: names, cities: cities}
+			cities := processLine(linesChannel)
+			resultChannel <- Result{cities: cities}
 		}()
 	}
 
-	var mergeDuration time.Duration
-	allCityNames := NewSet()
 	allCities := NewCityCollection()
 	for result := range resultChannel {
-		start := time.Now()
-		allCityNames.Merge(result.cityNames)
 		allCities = allCities.Merge(result.cities)
-		end := time.Now()
-		mergeDuration += end.Sub(start)
 	}
 
-	citySortStart := time.Now()
-	sortedCityNames := allCityNames.ToSlice()
-	slices.Sort(sortedCityNames)
-	citySortEnd := time.Now()
+	var cityNames []string
+	for cityName, _ := range allCities.cities {
+		cityNames = append(cityNames, cityName)
+	}
+	slices.Sort(cityNames)
 
-	calculateStart := time.Now()
-	for _, cityName := range sortedCityNames {
+	for _, cityName := range cityNames {
 		city := allCities.cities[cityName]
 		mean := math.Ceil(float64(city.sum) / float64(city.count))
 		fmt.Printf("%s=%.1f/%.1f/%.1f\n", cityName, float64(city.min)/10, float64(mean/10), float64(city.max)/10)
 	}
-	calculateEnd := time.Now()
 
-	endTime := time.Now()
-	fmt.Printf("total duration: %f seconds\n", endTime.Sub(startTime).Seconds())
-	fmt.Printf("process duration: %f seconds\n", processEnd.Sub(processStart).Seconds())
-	fmt.Printf("merge duration: %f seconds\n", mergeDuration.Seconds())
-	fmt.Printf("city sort duration: %f seconds\n", citySortEnd.Sub(citySortStart).Seconds())
-	fmt.Printf("calculate duration: %f seconds\n", calculateEnd.Sub(calculateStart).Seconds())
+	fmt.Printf("\ntotal duration: %f seconds\n", time.Now().Sub(startTime).Seconds())
 
 	f, err = os.Create(memoryProfile)
 	if err != nil {
@@ -224,9 +208,8 @@ func readFile(linesChannel chan string) {
 	close(linesChannel)
 }
 
-func processLine(textChannel chan string) (cityNames Set, cityCollection CityCollection) {
+func processLine(textChannel chan string) (cityCollection CityCollection) {
 	cityCollection = NewCityCollection()
-	cityNames = NewSet()
 
 	for linesString := range textChannel {
 		for {
@@ -241,12 +224,11 @@ func processLine(textChannel chan string) (cityNames Set, cityCollection CityCol
 			if !found {
 				log.Fatalf("unexpected values: %s", line)
 			}
-			cityNames.Add(cityName)
 			cityCollection.Add(cityName, parseTemperature(temperaturesString))
 		}
 	}
 
-	return cityNames, cityCollection
+	return cityCollection
 }
 
 // "41.1" -> 411
@@ -290,33 +272,4 @@ func convertTwoDigits(s string) int {
 func convertOneDigit(b byte) int {
 	b -= '0'
 	return int(b)
-}
-
-func NewSet() Set {
-	return Set{
-		values: make(map[string]bool),
-	}
-}
-
-type Set struct {
-	values map[string]bool
-}
-
-func (set Set) Add(s string) {
-	set.values[s] = true
-}
-
-func (set Set) ToSlice() []string {
-	var slice []string
-	for k, _ := range set.values {
-		slice = append(slice, k)
-	}
-
-	return slice
-}
-
-func (set Set) Merge(otherSet Set) {
-	for key, _ := range otherSet.values {
-		set.Add(key)
-	}
 }
